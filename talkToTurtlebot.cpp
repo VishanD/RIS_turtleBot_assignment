@@ -15,23 +15,28 @@ const int LEFT_EDGE_INDEX = 639;
 const int LEFT_MIDDLE_EDGE_INDEX = 479;
 
 const double SIDE_SAFETY_MARGIN = 0.2;
-const double FRONT_SAFETY_MARGIN = 1;
+const double FRONT_SAFETY_MARGIN = 0.8;
+const double WALL_FOLLOWING_DIST = 1;
+const double WALL_DETECTION_DIST = 3.8;
 
 
 // global variables
-double front_edge = 0;
-double right_edge = 0;
-double right_middle_edge = 0;
-double left_edge = 0;
-double left_middle_edge = 0;
+double front_edge = 1;
+double right_edge = 0.5;
+double right_middle_edge = 0.5;
+double left_edge = 0.5;
+double left_middle_edge = 0.5;
 double yaw = 0;
+bool obstacleAhead = false;
 
 
 // function prototypes
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
-void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
+void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
+// void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double yaw);
+// void initializeRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 
 
 // callback functions
@@ -42,45 +47,14 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   front_edge = scan->ranges[FRONT_EDGE_INDEX];
   left_edge = scan->ranges[LEFT_EDGE_INDEX];
   left_middle_edge = scan->ranges[LEFT_MIDDLE_EDGE_INDEX];
-  // ROS_INFO("Laser Scan Recieved.");
-  // ROS_INFO_STREAM(scan->header.frame_id);
-  // ROS_INFO("%s %f", "range_min       : ", scan->range_min);
-  // ROS_INFO("%s %f", "range_max       : ", scan->range_max);
-  // for (int i = 0; i < scan->ranges.size(); i++)
-  // {
-  //   if (i == 0) {
-  //     // ROS_INFO("%s %f", "Right Range : ", scan->ranges[i]);
-  //   }
-  //   else if (i == (scan->ranges.size()/2)) {
-  //     // ROS_INFO("%s %f", "Front Range : ", scan->ranges[i]);
-  //   }
-  //   else if (i == (scan->ranges.size() - 1)) {
-  //     ROS_INFO("%s %f", "Left Range : ", scan->ranges[i]);
-  //     // ROS_INFO("Yaw: [%f]", yaw);
-  //   }
-  // }
 
+  obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
+  ROS_INFO("obstacleAhead : %d", obstacleAhead);
 }
 
 void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  // ROS_INFO("Seq: [%d]", msg->header.seq);
-  //     ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", msg->pose.pose.position.x,msg->pose.pose.position.y, msg->pose.pose.position.z);
-  //     ROS_INFO("Orientation-> x: [%f], y: [%f], z: [%f], w: [%f]", msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-  //
-  // float linearposx=msg->pose.pose.position.x;
-  // float linearposy=msg->pose.pose.position.y;
-  double quatx= msg->pose.pose.orientation.x;
-  double quaty= msg->pose.pose.orientation.y;
-  double quatz= msg->pose.pose.orientation.z;
-  double quatw= msg->pose.pose.orientation.w;
-
-  tf::Quaternion q(quatx, quaty, quatz, quatw);
-  tf::Matrix3x3 m(q);
-  double roll, pitch;
-  m.getRPY(roll, pitch, yaw);
-
-  return;
+  yaw = tf::getYaw(msg->pose.pose.orientation);
 }
 
 int main(int argc, char **argv)
@@ -99,30 +73,30 @@ int main(int argc, char **argv)
   while (ros::ok())
   {
     ROS_INFO("left  : %f", left_edge);
-    ROS_INFO("front : %f", front_edge);
-    ROS_INFO("right : %f", right_edge);
+    // ROS_INFO("front : %f", front_edge);
+    // ROS_INFO("right : %f", right_edge);
+    // ROS_INFO("yaw : %f", yaw);
 
     // checking for NaN and replacing it with an arbitary value
-    if (front_edge != front_edge) {
-      front_edge = 10;
+    if (isnan(front_edge)) {
+      front_edge = 2;
     }
 
     // go straight if left side and front is clear
-    if (left_edge > SIDE_SAFETY_MARGIN && front_edge > FRONT_SAFETY_MARGIN) {
-      ROS_INFO_STREAM("Calling go straight");
+    if (/*left_edge > SIDE_SAFETY_MARGIN && */front_edge > FRONT_SAFETY_MARGIN) {
       goStraight(msg, loop_rate, twist_pub);
     }
 
     // turn right if front is blocked and right side is clear
-
-    // TODO : scanning just dead ahead misses obstacles at close range;
-    // solution : to scan the left and right middle as well and turn
-    else if (((front_edge < FRONT_SAFETY_MARGIN) || left_middle_edge < SIDE_SAFETY_MARGIN) && right_edge > SIDE_SAFETY_MARGIN) {
+    else if (front_edge < FRONT_SAFETY_MARGIN) {
       turnRight(msg, loop_rate, twist_pub);
     }
 
-    if (left_edge > 1) {
-      correctCourse(msg, loop_rate, twist_pub);
+    if (left_edge >= WALL_DETECTION_DIST) {
+      stopRobot(msg, loop_rate, twist_pub);
+      ROS_INFO_STREAM("Entered door finding function");
+      turnLeft(msg, loop_rate, twist_pub);
+      goStraight(msg, loop_rate, twist_pub);
     }
 
     ros::spinOnce();
@@ -135,19 +109,16 @@ int main(int argc, char **argv)
 
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
   for (int i = 0; i < 10; i++) {
-    if (front_edge > FRONT_SAFETY_MARGIN) {
-      ROS_INFO_STREAM("Go straight");
-      msg.linear.x = 0.2;
-      msg.angular.z = 0;
-      // twist_pub.publish(msg);
-      // loop_rate.sleep();
-    }
-    else {
-      ROS_INFO_STREAM("Obstacle ahead");
+    ROS_INFO_STREAM("Go straight");
+    if (obstacleAhead) {
       msg.linear.x = 0.0;
       msg.angular.z = 0;
+      ROS_INFO_STREAM("Stopping");
     }
-
+    else {
+      msg.linear.x = 0.2;
+      msg.angular.z = 0;
+    }
     twist_pub.publish(msg);
     loop_rate.sleep();
   }
@@ -173,31 +144,79 @@ void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twis
   }
 }
 
-void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  for (int i = 0; i < 5; i++) {
-    ROS_INFO_STREAM("correcting drift");
+// void reverseRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
+//   for (int i = 0; i < 10; i++) {
+//     ROS_INFO_STREAM("reverse");
+//     msg.linear.x = -0.1;
+//     msg.angular.z =  0;
+//     twist_pub.publish(msg);
+//     loop_rate.sleep();
+//   }
+// }
 
-    // HACK : Put 1 for 1m; declare as a constant above
-    if (left_edge > 1) {
-      turnLeft(msg, loop_rate, twist_pub);
-      goStraight(msg, loop_rate, twist_pub);
-    }
-    msg.linear.x = 0.0;
-    msg.angular.z = (((M_PI/2.0) - yaw)/5.0);
-    twist_pub.publish(msg);
-    loop_rate.sleep();
-  }
-
-  // for (int i = 0; i < 5; i++) {
-  //   if (left_edge <= 0.2) {
-  //     break;
-  //   }
-  //   else {
-  //     ROS_INFO_STREAM("correcting drift");
-  //     msg.linear.x = 0.2;
-  //     msg.angular.z = 0;
-  //     twist_pub.publish(msg);
-  //     loop_rate.sleep();
-  //   }
-  // }
+void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
+  ROS_INFO_STREAM("Robot Stop");
+  msg.linear.x = 0;
+  msg.angular.z =  0;
+  twist_pub.publish(msg);
 }
+
+// THE MOST IMPORTANT FUNCTION!
+// void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double yaw) {
+//   for (int i = 0; i < 5; i++) {
+//     ROS_INFO_STREAM("Stop Robot");
+//     stopRobot(msg, loop_rate, twist_pub);
+//     // correct yaw
+//     msg.linear.x = 0.0;
+//     msg.angular.z = -yaw;
+//     ROS_INFO("Yaw: %f; Corrected Yaw: %f", yaw, msg.angular.z);
+//
+//     // ALGORITHM
+//     /*
+//     If left_edge > WALL_FOLLOWING_DIST <---check condition in main loop
+//         stop
+//         see the yaw value
+//         correct yaw so that robot is having 0 rad yaw
+//     */
+//
+//     // if (left_edge > WALL_FOLLOWING_DIST) {
+//     //   turnLeft(msg, loop_rate, twist_pub);
+//     //   // goStraight(msg, loop_rate, twist_pub);
+//     // }
+//     // msg.linear.x = 0.0;
+//     // msg.angular.z = (((M_PI/2.0) - yaw)/5.0);
+//     // ROS_INFO("Yaw: %f", yaw);
+//     // ROS_INFO("angular_correction: %f", msg.angular.z);
+//     twist_pub.publish(msg);
+//     loop_rate.sleep();
+//   }
+//
+//   // for (int i = 0; i < 5; i++) {
+//   //   if (left_edge <= 0.2) {
+//   //     break;
+//   //   }
+//   //   else {
+//   //     ROS_INFO_STREAM("correcting drift");
+//   //     msg.linear.x = 0.2;
+//   //     msg.angular.z = 0;
+//   //     twist_pub.publish(msg);
+//   //     loop_rate.sleep();
+//   //   }
+//   // }
+// }
+
+// void initializeRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
+//   ROS_INFO("WALL_FOLLOWING_DIST %f", WALL_FOLLOWING_DIST);
+//   ROS_INFO("left_edge %f", left_edge);
+//   int iterations = ceil((WALL_FOLLOWING_DIST - left_edge)/0.2)*5;
+//   ROS_INFO("no of iterations = %d", iterations);
+//   turnRight(msg, loop_rate, twist_pub);
+//
+//   for (int i = 0; i < iterations; i++) {
+//     goStraight(msg, loop_rate, twist_pub);
+//     loop_rate.sleep();
+//   }
+//
+//   turnLeft(msg, loop_rate, twist_pub);
+//   stopRobot(msg, loop_rate, twist_pub);
+// }
