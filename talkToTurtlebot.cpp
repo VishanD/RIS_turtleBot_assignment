@@ -32,12 +32,9 @@ bool obstacleAhead = false;
 
 // function prototypes
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
-void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double yaw);
+void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
-// void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double yaw);
-// void initializeRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
-
 
 // callback functions
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
@@ -51,7 +48,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
   ROS_INFO("obstacleAhead : %d", obstacleAhead);
 
-  double ang = (scan->ranges.size() - scan->ranges.size()/2.0)*scan->angle_increment;
+  // double ang = (scan->ranges.size() - scan->ranges.size()/2.0)*scan->angle_increment;
   // ROS_INFO("Distance at max_angle: %f", left_edge);
   // ROS_INFO("Angle when parallel to wall: %f", ang);
 }
@@ -75,7 +72,7 @@ int main(int argc, char **argv)
 
   ros::Rate loop_rate(100);
 
-  // TODO : Include bumper controllers
+
   while (ros::ok())
   {
     // if (!wallOnLeft()) {
@@ -88,8 +85,14 @@ int main(int argc, char **argv)
     //   turnRight();
     // }
 
+    // TODO : 1. Include bumper controllers
+    // TODO : 2. Have function to check the current heading and location with expected heading and location.
+    //        Then apply corrections to stay on expected heading and location.
+
     ROS_INFO("yaw %f", yaw);
-    turnRight(msg ,loop_rate, twist_pub, yaw);
+    turnRight(msg ,loop_rate, twist_pub);
+    stopRobot(msg ,loop_rate, twist_pub);
+    turnLeft(msg ,loop_rate, twist_pub);
     stopRobot(msg ,loop_rate, twist_pub);
     ros::spinOnce();
 
@@ -99,6 +102,7 @@ int main(int argc, char **argv)
   return 0;
 }
 
+// TODO : Move 1 meter
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
   for (int i = 0; i < 10; i++) {
     ROS_INFO_STREAM("Go straight");
@@ -116,7 +120,8 @@ void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher tw
   }
 }
 
-void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double yaw) {
+// COMPLETE!
+void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
   double angular_speed = (M_PI)/36.0;
   msg.linear.x = 0;
   msg.angular.z =  -angular_speed;
@@ -138,16 +143,30 @@ void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
   twist_pub.publish(msg);
 }
 
+// COMPLETE!
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  for (int i = 0; i < 10; i++) {
-    ROS_INFO_STREAM("Turn left");
-    msg.linear.x = 0;
-    msg.angular.z =  (M_PI/4.0);
+  double angular_speed = (M_PI)/36.0;
+  msg.linear.x = 0;
+  msg.angular.z = angular_speed;
+  long double wanted_angle = M_PI/2;
+  long double turn_angle = 0.0;
+  ros::WallTime t0 = ros::WallTime::now();
+
+  do {
     twist_pub.publish(msg);
+    ros::WallTime t1 = ros::WallTime::now();
+    turn_angle = wanted_angle - (t1.toSec() - t0.toSec())*angular_speed;
     loop_rate.sleep();
-  }
+
+    ROS_INFO("dt %f", t1.toSec() - t0.toSec());
+    ROS_INFO("turn_angle %Lf", turn_angle * 180.0 / M_PI);
+  } while(turn_angle > 0);
+
+  msg.angular.z =  0;
+  twist_pub.publish(msg);
 }
 
+// COMPLETE!
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
   for (int i = 0; i < 50; i++) {
     ROS_INFO_STREAM("Robot Stop");
