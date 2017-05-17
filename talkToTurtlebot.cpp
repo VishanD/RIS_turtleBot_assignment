@@ -41,6 +41,7 @@ void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
+std::map<char, bool> detectWalls();
 
 // callback functions
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
@@ -82,32 +83,25 @@ int main(int argc, char **argv)
 
   while (ros::ok())
   {
-    // TODO : 1. Implement wall following
-    // if (!wallOnLeft()) {
-    //   turnLeft();
-    // }
-    // else if (!wallForeward()) {
-    //   goStraight();
-    // }
-    // else {
-    //   turnRight();
-    // }
+    ros::spinOnce();
+    std::map<char, bool> wallMap = detectWalls();
+
+    if (!wallMap.at('l')) {
+      ROS_INFO_STREAM("Turn Left");
+      turnLeft(msg ,loop_rate, twist_pub);
+    }
+    else if (!wallMap.at('f')) {
+      ROS_INFO_STREAM("Go straight");
+      goStraight(msg ,loop_rate, twist_pub);
+    }
+    else {
+      ROS_INFO_STREAM("Turn Right");
+      turnRight(msg ,loop_rate, twist_pub);
+    }
 
     // TODO : 2. Include bumper controllers <-- collision detection
-    // TODO : 3. Have function to (basically a feedback controller) check the current heading and location with expected heading and location.
-    //        Then apply corrections to stay on expected heading and location. <--error control
 
-    // ROS_INFO("Previous X: %f, Previous Y: %f", current_x, current_y);
-
-    ros::spinOnce();
-    goStraight(msg ,loop_rate, twist_pub);
     correctCourse(msg ,loop_rate, twist_pub);
-    // ROS_INFO("Current X: %f, Current Y: %f", current_x, current_y);
-
-    // turnRight(msg ,loop_rate, twist_pub);
-    // stopRobot(msg ,loop_rate, twist_pub);
-    // turnLeft(msg ,loop_rate, twist_pub);
-    // stopRobot(msg ,loop_rate, twist_pub);
 
     loop_rate.sleep();
   }
@@ -148,8 +142,8 @@ void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
     turn_angle = wanted_angle - (t1.toSec() - t0.toSec())*angular_speed;
     loop_rate.sleep();
 
-    ROS_INFO("dt %f", t1.toSec() - t0.toSec());
-    ROS_INFO("turn_angle %Lf", turn_angle * 180.0 / M_PI);
+    // ROS_INFO("dt %f", t1.toSec() - t0.toSec());
+    // ROS_INFO("turn_angle %Lf", turn_angle * 180.0 / M_PI);
   } while(turn_angle > 0);
 
   msg.angular.z =  0;
@@ -171,8 +165,8 @@ void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twis
     turn_angle = wanted_angle - (t1.toSec() - t0.toSec())*angular_speed;
     loop_rate.sleep();
 
-    ROS_INFO("dt %f", t1.toSec() - t0.toSec());
-    ROS_INFO("turn_angle %Lf", turn_angle * 180.0 / M_PI);
+    // ROS_INFO("dt %f", t1.toSec() - t0.toSec());
+    // ROS_INFO("turn_angle %Lf", turn_angle * 180.0 / M_PI);
   } while(turn_angle > 0);
 
   msg.angular.z =  0;
@@ -190,6 +184,7 @@ void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
   }
 }
 
+// COMPLETE!
 void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
   // get distance from the left wall (orientation consider later)
   // if (distance < safe_distance_min)
@@ -219,4 +214,19 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
     turnRight(msg ,loop_rate, twist_pub);
     stopRobot(msg ,loop_rate, twist_pub);
   }
+}
+
+
+std::map<char, bool> detectWalls() {
+  std::map<char, bool> wallMap;
+
+  bool wallFront  = (front_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+  bool wallLeft   = (left_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+  bool wallRight  = (right_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+
+  wallMap.insert(std::pair<char, bool>('f', wallFront));
+  wallMap.insert(std::pair<char, bool>('l', wallLeft));
+  wallMap.insert(std::pair<char, bool>('r', wallRight));
+
+  return wallMap;
 }
