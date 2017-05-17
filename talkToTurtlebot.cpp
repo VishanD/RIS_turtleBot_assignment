@@ -26,7 +26,9 @@ double right_edge = 0.5;
 double right_middle_edge = 0.5;
 double left_edge = 0.5;
 double left_middle_edge = 0.5;
-double yaw = 0;
+// double yaw = 0;
+double current_x = 0;
+double current_y = 0;
 bool obstacleAhead = false;
 
 
@@ -55,8 +57,10 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 
 void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  yaw = tf::getYaw(msg->pose.pose.orientation);
-  ROS_INFO("yaw %f", yaw);
+
+  current_x = msg->pose.pose.position.x;
+  current_y = msg->pose.pose.position.y;
+  // yaw = tf::getYaw(msg->pose.pose.orientation);
 }
 
 int main(int argc, char **argv)
@@ -72,7 +76,6 @@ int main(int argc, char **argv)
 
   ros::Rate loop_rate(100);
 
-
   while (ros::ok())
   {
     // if (!wallOnLeft()) {
@@ -86,14 +89,18 @@ int main(int argc, char **argv)
     // }
 
     // TODO : 1. Include bumper controllers
-    // TODO : 2. Have function to check the current heading and location with expected heading and location.
+    // TODO : 2. Have function to (basically a feedback controller) check the current heading and location with expected heading and location.
     //        Then apply corrections to stay on expected heading and location.
 
-    ROS_INFO("yaw %f", yaw);
-    turnRight(msg ,loop_rate, twist_pub);
-    stopRobot(msg ,loop_rate, twist_pub);
-    turnLeft(msg ,loop_rate, twist_pub);
-    stopRobot(msg ,loop_rate, twist_pub);
+    ROS_INFO("Previous X: %f, Previous Y: %f", current_x, current_y);
+    goStraight(msg ,loop_rate, twist_pub);
+    ROS_INFO("Current X: %f, Current Y: %f", current_x, current_y);
+
+    // turnRight(msg ,loop_rate, twist_pub);
+    // stopRobot(msg ,loop_rate, twist_pub);
+    // turnLeft(msg ,loop_rate, twist_pub);
+    // stopRobot(msg ,loop_rate, twist_pub);
+
     ros::spinOnce();
 
     loop_rate.sleep();
@@ -102,22 +109,22 @@ int main(int argc, char **argv)
   return 0;
 }
 
-// TODO : Move 1 meter
+// COMPLETE!
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  for (int i = 0; i < 10; i++) {
-    ROS_INFO_STREAM("Go straight");
-    if (obstacleAhead) {
-      msg.linear.x = 0.0;
-      msg.angular.z = 0;
-      ROS_INFO_STREAM("Stopping");
-    }
-    else {
-      msg.linear.x = 0.2;
-      msg.angular.z = 0;
-    }
+  double goal_x = 1.0;
+  double current_pos_x = 0.0;
+  double linear_speed = 0.25;
+  ros::WallTime t0 = ros::WallTime::now();
+
+  do {
+    ROS_INFO("current_pos_x : %f", current_pos_x);
+    msg.linear.x = linear_speed;
+    msg.angular.z = 0;
     twist_pub.publish(msg);
-    loop_rate.sleep();
-  }
+    current_pos_x = linear_speed * (ros::WallTime::now().toSec() - t0.toSec());
+  } while (current_pos_x < goal_x);
+
+  stopRobot(msg ,loop_rate, twist_pub);
 }
 
 // COMPLETE!
@@ -168,7 +175,7 @@ void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twis
 
 // COMPLETE!
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 100; i++) {
     ROS_INFO_STREAM("Robot Stop");
     msg.linear.x = 0;
     msg.angular.z =  0;
