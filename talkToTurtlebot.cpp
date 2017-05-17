@@ -8,59 +8,49 @@
 #include <cmath>
 
 // global constants
-const int RIGHT_EDGE_INDEX = 0;
-const int RIGHT_MIDDLE_EDGE_INDEX = 159;
 const int FRONT_EDGE_INDEX = 319;
 const int LEFT_EDGE_INDEX = 639;
-const int LEFT_MIDDLE_EDGE_INDEX = 479;
 
-// const double SIDE_SAFETY_MARGIN = 0.2;
-// const double FRONT_SAFETY_MARGIN = 0.8;
+const double WALL_FRONT_SAFETY_DIST= 1;
 const double WALL_FOLLOWING_DIST_MIN = 0.2;
 const double WALL_FOLLOWING_DIST_MAX = 0.4;
 const double WALL_FOLLOWING_LASER_DIST_MIN = 0.4;
-const double WALL_FOLLOWING_LASER_DIST_MAX = 0.8;
-
+const double WALL_FOLLOWING_LASER_DIST_MAX = 1.0;
 
 
 // global variables
 double front_edge = -1.0;
-double right_edge = -1.0;
-double right_middle_edge = 0.0;
 double left_edge = -1.0;
-double left_middle_edge = 0.0;
-// double yaw = 0;
+double closest_edge = -1.0;
+
 double current_x = 0;
 double current_y = 0;
-bool obstacleAhead = false;
 
 
 // function prototypes
-void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x = 1);
+void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x = 0.5);
 void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 std::map<char, bool> detectWalls();
 
+
 // callback functions
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
-  right_edge = scan->ranges[RIGHT_EDGE_INDEX];
-  right_middle_edge = scan->ranges[RIGHT_MIDDLE_EDGE_INDEX];
+  int closest_edge_index = FRONT_EDGE_INDEX;
+  for (int i = FRONT_EDGE_INDEX; i <= LEFT_EDGE_INDEX; i++) {
+    if (scan->ranges[i] < scan->ranges[closest_edge_index]) {
+      closest_edge_index = i;
+    }
+  }
+
   front_edge = scan->ranges[FRONT_EDGE_INDEX];
   left_edge = scan->ranges[LEFT_EDGE_INDEX];
-  left_middle_edge = scan->ranges[LEFT_MIDDLE_EDGE_INDEX];
+  closest_edge = scan->ranges[closest_edge_index];
 
-  obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
-  // ROS_INFO("obstacleAhead : %d", obstacleAhead);
-
-  // double ang = (scan->ranges.size() - scan->ranges.size()/2.0)*scan->angle_increment;
-  // ROS_INFO("Distance at max_angle: %f", left_edge);
-  // ROS_INFO("Angle when parallel to wall: %f", ang);
-
-  // ROS_INFO("left_edge: %f", left_edge);
-  // ROS_INFO("Angle when parallel to wall: %f", ang);
+  ROS_INFO("closest_edge : %f", closest_edge);
 }
 
 void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg)
@@ -70,6 +60,7 @@ void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg)
   current_y = msg->pose.pose.position.y;
   // yaw = tf::getYaw(msg->pose.pose.orientation);
 }
+
 
 int main(int argc, char **argv)
 {
@@ -118,7 +109,7 @@ int main(int argc, char **argv)
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x) {
   // double goal_x = 1.0;
   double current_pos_x = 0.0;
-  double linear_speed = 0.25;
+  double linear_speed = 0.2;
   ros::WallTime t0 = ros::WallTime::now();
 
   do {
@@ -180,7 +171,7 @@ void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twis
 
 // COMPLETE!
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < 50; i++) {
     ROS_INFO_STREAM("Robot Stop");
     msg.linear.x = 0;
     msg.angular.z =  0;
@@ -221,25 +212,25 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
   }
 }
 
-
+// COMPLETE!
 std::map<char, bool> detectWalls() {
   std::map<char, bool> wallMap;
 
-  // ROS_INFO("wallFront %f", front_edge);
-  // ROS_INFO("wallLeft %f", left_edge);
+  ROS_INFO("wallFront %f", front_edge);
+  ROS_INFO("wallLeft %f", left_edge);
   // ROS_INFO("wallRight %f", right_edge);
 
-  bool wallFront  = (front_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+  bool wallFront  = (closest_edge < WALL_FRONT_SAFETY_DIST) ? true : false; // front_edge changed to closest_edge
   bool wallLeft   = (left_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
-  bool wallRight  = (right_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+  // bool wallRight  = (right_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
 
-  // ROS_INFO("wallFront %d", wallFront);
-  // ROS_INFO("wallLeft %d", wallLeft);
+  ROS_INFO("wallFront %d", wallFront);
+  ROS_INFO("wallLeft %d", wallLeft);
   // ROS_INFO("wallRight %d", wallRight);
 
   wallMap.insert(std::pair<char, bool>('f', wallFront));
   wallMap.insert(std::pair<char, bool>('l', wallLeft));
-  wallMap.insert(std::pair<char, bool>('r', wallRight));
+  // wallMap.insert(std::pair<char, bool>('r', wallRight));
 
   return wallMap;
 }
