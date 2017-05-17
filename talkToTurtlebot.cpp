@@ -24,10 +24,10 @@ const double WALL_FOLLOWING_LASER_DIST_MAX = 0.8;
 
 
 // global variables
-double front_edge = 0.0;
-double right_edge = 0.0;
+double front_edge = -1.0;
+double right_edge = -1.0;
 double right_middle_edge = 0.0;
-double left_edge = 0.0;
+double left_edge = -1.0;
 double left_middle_edge = 0.0;
 // double yaw = 0;
 double current_x = 0;
@@ -52,11 +52,14 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   left_edge = scan->ranges[LEFT_EDGE_INDEX];
   left_middle_edge = scan->ranges[LEFT_MIDDLE_EDGE_INDEX];
 
-  // obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
+  obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
   // ROS_INFO("obstacleAhead : %d", obstacleAhead);
 
   // double ang = (scan->ranges.size() - scan->ranges.size()/2.0)*scan->angle_increment;
   // ROS_INFO("Distance at max_angle: %f", left_edge);
+  // ROS_INFO("Angle when parallel to wall: %f", ang);
+
+  // ROS_INFO("left_edge: %f", left_edge);
   // ROS_INFO("Angle when parallel to wall: %f", ang);
 }
 
@@ -84,24 +87,26 @@ int main(int argc, char **argv)
   while (ros::ok())
   {
     ros::spinOnce();
-    std::map<char, bool> wallMap = detectWalls();
 
-    if (!wallMap.at('l')) {
-      ROS_INFO_STREAM("Turn Left");
-      turnLeft(msg ,loop_rate, twist_pub);
-    }
-    else if (!wallMap.at('f')) {
-      ROS_INFO_STREAM("Go straight");
-      goStraight(msg ,loop_rate, twist_pub);
-    }
-    else {
-      ROS_INFO_STREAM("Turn Right");
-      turnRight(msg ,loop_rate, twist_pub);
-    }
+    if (left_edge != -1) {
+      std::map<char, bool> wallMap = detectWalls();
 
-    // TODO : 2. Include bumper controllers <-- collision detection
+      if (!wallMap.at('f')) {
+        goStraight(msg ,loop_rate, twist_pub);
+      }
 
-    correctCourse(msg ,loop_rate, twist_pub);
+      else if (!wallMap.at('l')) {
+        turnLeft(msg ,loop_rate, twist_pub);
+      }
+      else {
+        turnRight(msg ,loop_rate, twist_pub);
+      }
+
+      // TODO : 2. Include bumper controllers <-- collision detection
+
+      // ISSUE : Correcting course happens too often. Reduce it by increasing the max range or by a timer.
+      correctCourse(msg ,loop_rate, twist_pub);
+    }
 
     loop_rate.sleep();
   }
@@ -117,7 +122,7 @@ void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher tw
   ros::WallTime t0 = ros::WallTime::now();
 
   do {
-    ROS_INFO("current_pos_x : %f", current_pos_x);
+    // ROS_INFO("current_pos_x : %f", current_pos_x);
     msg.linear.x = linear_speed;
     msg.angular.z = 0;
     twist_pub.publish(msg);
@@ -201,7 +206,7 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
   if (left_edge < WALL_FOLLOWING_LASER_DIST_MIN) {
     turnRight(msg ,loop_rate, twist_pub);
     double correction = (WALL_FOLLOWING_DIST_MIN - (left_edge * 0.5)); // 0.5 = Sin 30 deg
-    ROS_INFO("correction : %f", correction);
+    // ROS_INFO("correction : %f", correction);
     goStraight(msg ,loop_rate, twist_pub, correction);
     turnLeft(msg ,loop_rate, twist_pub);
     stopRobot(msg ,loop_rate, twist_pub);
@@ -209,7 +214,7 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
   else if (left_edge > WALL_FOLLOWING_LASER_DIST_MAX || std::isnan(left_edge)) {
     turnLeft(msg ,loop_rate, twist_pub);
     double correction = ((left_edge * 0.5) - WALL_FOLLOWING_DIST_MAX); // 0.5 = Sin 30 deg
-    ROS_INFO("correction : %f", correction);
+    // ROS_INFO("correction : %f", correction);
     goStraight(msg ,loop_rate, twist_pub, correction);
     turnRight(msg ,loop_rate, twist_pub);
     stopRobot(msg ,loop_rate, twist_pub);
@@ -220,9 +225,17 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
 std::map<char, bool> detectWalls() {
   std::map<char, bool> wallMap;
 
+  // ROS_INFO("wallFront %f", front_edge);
+  // ROS_INFO("wallLeft %f", left_edge);
+  // ROS_INFO("wallRight %f", right_edge);
+
   bool wallFront  = (front_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
   bool wallLeft   = (left_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
   bool wallRight  = (right_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+
+  // ROS_INFO("wallFront %d", wallFront);
+  // ROS_INFO("wallLeft %d", wallLeft);
+  // ROS_INFO("wallRight %d", wallRight);
 
   wallMap.insert(std::pair<char, bool>('f', wallFront));
   wallMap.insert(std::pair<char, bool>('l', wallLeft));
