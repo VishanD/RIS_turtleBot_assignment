@@ -14,18 +14,21 @@ const int FRONT_EDGE_INDEX = 319;
 const int LEFT_EDGE_INDEX = 639;
 const int LEFT_MIDDLE_EDGE_INDEX = 479;
 
-const double SIDE_SAFETY_MARGIN = 0.2;
-const double FRONT_SAFETY_MARGIN = 0.8;
-const double WALL_FOLLOWING_DIST = 1;
-const double WALL_DETECTION_DIST = 3.7;
+// const double SIDE_SAFETY_MARGIN = 0.2;
+// const double FRONT_SAFETY_MARGIN = 0.8;
+const double WALL_FOLLOWING_DIST_MIN = 0.2;
+const double WALL_FOLLOWING_DIST_MAX = 0.4;
+const double WALL_FOLLOWING_LASER_DIST_MIN = 0.4;
+const double WALL_FOLLOWING_LASER_DIST_MAX = 0.8;
+
 
 
 // global variables
-double front_edge = 1;
-double right_edge = 0.5;
-double right_middle_edge = 0.5;
-double left_edge = 0.5;
-double left_middle_edge = 0.5;
+double front_edge = 0.0;
+double right_edge = 0.0;
+double right_middle_edge = 0.0;
+double left_edge = 0.0;
+double left_middle_edge = 0.0;
 // double yaw = 0;
 double current_x = 0;
 double current_y = 0;
@@ -33,10 +36,11 @@ bool obstacleAhead = false;
 
 
 // function prototypes
-void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
+void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x = 1);
 void turnRight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
+void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub);
 
 // callback functions
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
@@ -47,8 +51,8 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   left_edge = scan->ranges[LEFT_EDGE_INDEX];
   left_middle_edge = scan->ranges[LEFT_MIDDLE_EDGE_INDEX];
 
-  obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
-  ROS_INFO("obstacleAhead : %d", obstacleAhead);
+  // obstacleAhead = (front_edge < FRONT_SAFETY_MARGIN) ? true : false;
+  // ROS_INFO("obstacleAhead : %d", obstacleAhead);
 
   // double ang = (scan->ranges.size() - scan->ranges.size()/2.0)*scan->angle_increment;
   // ROS_INFO("Distance at max_angle: %f", left_edge);
@@ -78,6 +82,7 @@ int main(int argc, char **argv)
 
   while (ros::ok())
   {
+    // TODO : 1. Implement wall following
     // if (!wallOnLeft()) {
     //   turnLeft();
     // }
@@ -88,20 +93,21 @@ int main(int argc, char **argv)
     //   turnRight();
     // }
 
-    // TODO : 1. Include bumper controllers
-    // TODO : 2. Have function to (basically a feedback controller) check the current heading and location with expected heading and location.
-    //        Then apply corrections to stay on expected heading and location.
+    // TODO : 2. Include bumper controllers <-- collision detection
+    // TODO : 3. Have function to (basically a feedback controller) check the current heading and location with expected heading and location.
+    //        Then apply corrections to stay on expected heading and location. <--error control
 
-    ROS_INFO("Previous X: %f, Previous Y: %f", current_x, current_y);
+    // ROS_INFO("Previous X: %f, Previous Y: %f", current_x, current_y);
+
+    ros::spinOnce();
     goStraight(msg ,loop_rate, twist_pub);
-    ROS_INFO("Current X: %f, Current Y: %f", current_x, current_y);
+    correctCourse(msg ,loop_rate, twist_pub);
+    // ROS_INFO("Current X: %f, Current Y: %f", current_x, current_y);
 
     // turnRight(msg ,loop_rate, twist_pub);
     // stopRobot(msg ,loop_rate, twist_pub);
     // turnLeft(msg ,loop_rate, twist_pub);
     // stopRobot(msg ,loop_rate, twist_pub);
-
-    ros::spinOnce();
 
     loop_rate.sleep();
   }
@@ -110,8 +116,8 @@ int main(int argc, char **argv)
 }
 
 // COMPLETE!
-void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  double goal_x = 1.0;
+void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x) {
+  // double goal_x = 1.0;
   double current_pos_x = 0.0;
   double linear_speed = 0.25;
   ros::WallTime t0 = ros::WallTime::now();
@@ -181,5 +187,36 @@ void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
     msg.angular.z =  0;
     twist_pub.publish(msg);
     loop_rate.sleep();
+  }
+}
+
+void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
+  // get distance from the left wall (orientation consider later)
+  // if (distance < safe_distance_min)
+  //  turnRight()
+  //  goStraight(safe_distance_min - distance + 0.2)
+  //  turnLeft()
+  //  stopRobot()
+  // else if (distance > safe_distance_max || NaN) {
+  //  turnLeft()
+  //  goStraight(distance - safe_distance_max + 0.2)
+  //  turnRight()
+  //  stopRobot()
+
+  if (left_edge < WALL_FOLLOWING_LASER_DIST_MIN) {
+    turnRight(msg ,loop_rate, twist_pub);
+    double correction = (WALL_FOLLOWING_DIST_MIN - (left_edge * 0.5)); // 0.5 = Sin 30 deg
+    ROS_INFO("correction : %f", correction);
+    goStraight(msg ,loop_rate, twist_pub, correction);
+    turnLeft(msg ,loop_rate, twist_pub);
+    stopRobot(msg ,loop_rate, twist_pub);
+  }
+  else if (left_edge > WALL_FOLLOWING_LASER_DIST_MAX || std::isnan(left_edge)) {
+    turnLeft(msg ,loop_rate, twist_pub);
+    double correction = ((left_edge * 0.5) - WALL_FOLLOWING_DIST_MAX); // 0.5 = Sin 30 deg
+    ROS_INFO("correction : %f", correction);
+    goStraight(msg ,loop_rate, twist_pub, correction);
+    turnRight(msg ,loop_rate, twist_pub);
+    stopRobot(msg ,loop_rate, twist_pub);
   }
 }
