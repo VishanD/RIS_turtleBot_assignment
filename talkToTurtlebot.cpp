@@ -9,6 +9,7 @@
 
 // global constants
 const int FRONT_EDGE_INDEX = 319;
+const int LEFT_MIDDLE_EDGE_INDEX = 479;
 const int LEFT_EDGE_INDEX = 639;
 
 const double WALL_FRONT_SAFETY_DIST= 1;
@@ -39,16 +40,24 @@ std::map<char, bool> detectWalls();
 // callback functions
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
+  std::vector<float> filted_ranges = scan->ranges;
+  // replace all NaN with 99
+  for (int i = FRONT_EDGE_INDEX; i <= LEFT_MIDDLE_EDGE_INDEX; i++) {
+    if (std::isnan(filted_ranges[i])) {
+      filted_ranges[i] = 99;
+    }
+  }
+
   int closest_edge_index = FRONT_EDGE_INDEX;
-  for (int i = FRONT_EDGE_INDEX; i <= LEFT_EDGE_INDEX; i++) {
-    if (scan->ranges[i] < scan->ranges[closest_edge_index]) {
+  for (int i = FRONT_EDGE_INDEX; i <= LEFT_MIDDLE_EDGE_INDEX; i++) {
+    if ((filted_ranges[i] < filted_ranges[closest_edge_index])) {
       closest_edge_index = i;
     }
   }
 
-  front_edge = scan->ranges[FRONT_EDGE_INDEX];
-  left_edge = scan->ranges[LEFT_EDGE_INDEX];
-  closest_edge = scan->ranges[closest_edge_index];
+  front_edge = filted_ranges[FRONT_EDGE_INDEX];
+  left_edge = filted_ranges[LEFT_EDGE_INDEX];
+  closest_edge = filted_ranges[closest_edge_index];
 
   ROS_INFO("closest_edge : %f", closest_edge);
 }
@@ -90,12 +99,11 @@ int main(int argc, char **argv)
         turnLeft(msg ,loop_rate, twist_pub);
       }
       else {
+        ROS_INFO_STREAM("Turn right by else");
         turnRight(msg ,loop_rate, twist_pub);
       }
 
       // TODO : 2. Include bumper controllers <-- collision detection
-
-      // ISSUE : Correcting course happens too often. Reduce it by increasing the max range or by a timer.
       correctCourse(msg ,loop_rate, twist_pub);
     }
 
@@ -171,8 +179,8 @@ void turnLeft(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twis
 
 // COMPLETE!
 void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
+  ROS_INFO_STREAM("Robot Stop");
   for (int i = 0; i < 50; i++) {
-    ROS_INFO_STREAM("Robot Stop");
     msg.linear.x = 0;
     msg.angular.z =  0;
     twist_pub.publish(msg);
@@ -194,6 +202,8 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
   //  turnRight()
   //  stopRobot()
 
+  // BUG : I think when the wall is missed on the left, a nan is given. Nan is considered < WALL_FOLLOWING_LASER_DIST_MIN; hence right turn
+  // TODO: Check and rectify this; print left_edge and observe
   if (left_edge < WALL_FOLLOWING_LASER_DIST_MIN) {
     turnRight(msg ,loop_rate, twist_pub);
     double correction = (WALL_FOLLOWING_DIST_MIN - (left_edge * 0.5)); // 0.5 = Sin 30 deg
@@ -216,21 +226,15 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
 std::map<char, bool> detectWalls() {
   std::map<char, bool> wallMap;
 
-  ROS_INFO("wallFront %f", front_edge);
-  ROS_INFO("wallLeft %f", left_edge);
-  // ROS_INFO("wallRight %f", right_edge);
-
-  bool wallFront  = (closest_edge < WALL_FRONT_SAFETY_DIST) ? true : false; // front_edge changed to closest_edge
+  // bool wallFront  = (front_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
+  bool wallMiddleLeft  = (closest_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
   bool wallLeft   = (left_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
-  // bool wallRight  = (right_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
 
-  ROS_INFO("wallFront %d", wallFront);
+  ROS_INFO("wallMiddleLeft %d", wallMiddleLeft);
   ROS_INFO("wallLeft %d", wallLeft);
-  // ROS_INFO("wallRight %d", wallRight);
 
-  wallMap.insert(std::pair<char, bool>('f', wallFront));
+  wallMap.insert(std::pair<char, bool>('f', wallMiddleLeft));
   wallMap.insert(std::pair<char, bool>('l', wallLeft));
-  // wallMap.insert(std::pair<char, bool>('r', wallRight));
 
   return wallMap;
 }
