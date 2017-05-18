@@ -119,12 +119,13 @@ void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher tw
   // double goal_x = 1.0;
   double current_pos_x = 0.0;
   double linear_speed = 0.2;
+  double angular_correction = 0.00604; // changed from 0.007551
   ros::WallTime t0 = ros::WallTime::now();
 
   do {
     // ROS_INFO("current_pos_x : %f", current_pos_x);
     msg.linear.x = linear_speed;
-    msg.angular.z = 0.007551; // changed from 0
+    msg.angular.z = angular_correction;
     twist_pub.publish(msg);
     current_pos_x = linear_speed * (ros::WallTime::now().toSec() - t0.toSec());
   } while (current_pos_x < goal_x);
