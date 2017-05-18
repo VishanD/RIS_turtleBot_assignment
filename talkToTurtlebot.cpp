@@ -73,20 +73,21 @@ void poseCallback(const nav_msgs::Odometry::ConstPtr& msg)
   yaw_angle = tf::getYaw(msg->pose.pose.orientation);
 }
 
-void bumperCallback(const kobuki_msgs::BumperEvent::ConstPtr& msg) {
+void bumperCallback(const kobuki_msgs::BumperEvent::ConstPtr& msg)
+{
   if (msg->state == kobuki_msgs::BumperEvent::PRESSED) {
     switch (msg->bumper) {
       case kobuki_msgs::BumperEvent::LEFT :
         hitWall = true;
-        ROS_INFO_STREAM("HIT WALL");
+        ROS_INFO_STREAM("HIT WALL L");
       break;
       case kobuki_msgs::BumperEvent::CENTER :
         hitWall = true;
-        ROS_INFO_STREAM("HIT WALL");
+        ROS_INFO_STREAM("HIT WALL C");
       break;
       case kobuki_msgs::BumperEvent::RIGHT :
         hitWall = true;
-        ROS_INFO_STREAM("HIT WALL");
+        ROS_INFO_STREAM("HIT WALL R");
       break;
     }
   }
@@ -121,6 +122,7 @@ int main(int argc, char **argv)
       std::map<char, bool> wallMap = detectWalls();
 
       if (!wallMap.at('l')) {
+        // goStraight(msg ,loop_rate, twist_pub, 0.1);
         turnLeft(msg ,loop_rate, twist_pub);
       }
       else if (!wallMap.at('f')) {
@@ -233,6 +235,8 @@ std::map<char, bool> detectWalls() {
 
   ROS_INFO("wallMiddleLeft : %d", wallMiddleLeft);
   ROS_INFO("wallLeft : %d", wallLeft);
+  ROS_INFO("wallMiddleLeft : %f", closest_edge);
+  ROS_INFO("wallLeft : %f", left_edge);
 
   wallMap.insert(std::pair<char, bool>('f', wallMiddleLeft));
   wallMap.insert(std::pair<char, bool>('l', wallLeft));
