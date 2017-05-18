@@ -16,7 +16,7 @@ const double WALL_FRONT_SAFETY_DIST= 1;
 const double WALL_FOLLOWING_DIST_MIN = 0.2;
 const double WALL_FOLLOWING_DIST_MAX = 0.4;
 const double WALL_FOLLOWING_LASER_DIST_MIN = 0.4;
-const double WALL_FOLLOWING_LASER_DIST_MAX = 1.0;
+const double WALL_FOLLOWING_LASER_DIST_MAX = 2.0;
 
 
 // global variables
@@ -91,20 +91,21 @@ int main(int argc, char **argv)
     if (left_edge != -1) {
       std::map<char, bool> wallMap = detectWalls();
 
-      if (!wallMap.at('f')) {
-        goStraight(msg ,loop_rate, twist_pub);
+      if (!wallMap.at('l')) {
+        turnLeft(msg ,loop_rate, twist_pub);
       }
 
-      else if (!wallMap.at('l')) {
-        turnLeft(msg ,loop_rate, twist_pub);
+      else if (!wallMap.at('f')) {
+        goStraight(msg ,loop_rate, twist_pub);
       }
       else {
         ROS_INFO_STREAM("Turn right by else");
         turnRight(msg ,loop_rate, twist_pub);
+        goStraight(msg ,loop_rate, twist_pub, 0.3);
       }
 
       // TODO : 2. Include bumper controllers <-- collision detection
-      correctCourse(msg ,loop_rate, twist_pub);
+      // correctCourse(msg ,loop_rate, twist_pub); <-------TODO: Uncomment this
     }
 
     loop_rate.sleep();
@@ -123,7 +124,7 @@ void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher tw
   do {
     // ROS_INFO("current_pos_x : %f", current_pos_x);
     msg.linear.x = linear_speed;
-    msg.angular.z = 0;
+    msg.angular.z = 0.007551; // changed from 0
     twist_pub.publish(msg);
     current_pos_x = linear_speed * (ros::WallTime::now().toSec() - t0.toSec());
   } while (current_pos_x < goal_x);
@@ -205,6 +206,7 @@ void correctCourse(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher
   // BUG : I think when the wall is missed on the left, a nan is given. Nan is considered < WALL_FOLLOWING_LASER_DIST_MIN; hence right turn
   // TODO: Check and rectify this; print left_edge and observe
   if (left_edge < WALL_FOLLOWING_LASER_DIST_MIN) {
+    ROS_INFO_STREAM("turning right by correction");
     turnRight(msg ,loop_rate, twist_pub);
     double correction = (WALL_FOLLOWING_DIST_MIN - (left_edge * 0.5)); // 0.5 = Sin 30 deg
     // ROS_INFO("correction : %f", correction);
@@ -228,9 +230,15 @@ std::map<char, bool> detectWalls() {
 
   // bool wallFront  = (front_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
   bool wallMiddleLeft  = (closest_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
-  bool wallLeft   = (left_edge < WALL_FOLLOWING_LASER_DIST_MAX) ? true : false;
+
+  // reason for considering NaN as true :
+  // NaN occurs when wall is either too close or far away to detect.
+  // This robot follows the left wall, hence it cannot logically be too far away.
+  // Hence logically, NaN occurance can be considered as the robot is very close to the left wall.
+  bool wallLeft   = ((left_edge < WALL_FOLLOWING_LASER_DIST_MAX) || std::isnan(left_edge)) ? true : false;
 
   ROS_INFO("wallMiddleLeft %d", wallMiddleLeft);
+  ROS_INFO("wallLeft dist %f", left_edge);
   ROS_INFO("wallLeft %d", wallLeft);
 
   wallMap.insert(std::pair<char, bool>('f', wallMiddleLeft));
