@@ -106,7 +106,7 @@ int main(int argc, char **argv)
 
   geometry_msgs::Twist msg;
 
-  ros::Rate loop_rate(1000);
+  ros::Rate loop_rate(100);
 
   while (ros::ok())
   {
@@ -122,8 +122,24 @@ int main(int argc, char **argv)
       std::map<char, bool> wallMap = detectWalls();
 
       if (!wallMap.at('l')) {
-        // goStraight(msg ,loop_rate, twist_pub, 0.1);
         turnLeft(msg ,loop_rate, twist_pub);
+        // if (wallMap.at('d')) {
+        //   ROS_INFO_STREAM("door detected");
+        //   goStraight(msg ,loop_rate, twist_pub, 0.6);
+        //   stopRobot(msg ,loop_rate, twist_pub);
+        //   turnLeft(msg ,loop_rate, twist_pub);
+        //   goStraight(msg ,loop_rate, twist_pub, 1.0);
+        //   stopRobot(msg ,loop_rate, twist_pub);
+        // }
+        // else if (wallMap.at('s')) {
+        //   ROS_INFO_STREAM("stranded");
+        //   turnLeft(msg ,loop_rate, twist_pub);
+        //   goStraight(msg ,loop_rate, twist_pub, 0.8);
+        // }
+        // else {
+        //   ROS_INFO_STREAM("normal left");
+        //   turnLeft(msg ,loop_rate, twist_pub);
+        // }
       }
       else if (!wallMap.at('f')) {
         goStraight(msg ,loop_rate, twist_pub);
@@ -134,8 +150,6 @@ int main(int argc, char **argv)
         ros::spinOnce();
         goStraight(msg ,loop_rate, twist_pub, 0.3);
       }
-
-      // TODO : 2. Include bumper controllers <-- collision detection
     }
 
     loop_rate.sleep();
@@ -143,6 +157,7 @@ int main(int argc, char **argv)
 
   return 0;
 }
+
 
 // COMPLETE!
 void goStraight(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub, double goal_x) {
@@ -224,28 +239,31 @@ void stopRobot(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twi
 std::map<char, bool> detectWalls() {
   std::map<char, bool> wallMap;
 
-  // bool wallFront  = (front_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
   bool wallMiddleLeft  = (closest_edge < WALL_FRONT_SAFETY_DIST) ? true : false;
-
   // reason for considering NaN as true :
   // NaN occurs when wall is either too close or far away to detect.
-  // This robot follows the left wall, hence it cannot logically be too far away.
-  // Hence logically, NaN occurance can be considered as the robot is very close to the left wall.
+  // This robot follows the left wall, therefore, the most possible case is that the robot is too close.
+  // Hence logically, NaN occurance can be considered as the robot being very close to the left wall.
   bool wallLeft   = ((left_edge < WALL_FOLLOWING_LASER_DIST_MAX) || std::isnan(left_edge)) ? true : false;
+  bool doorLeft = (wallMiddleLeft == 0 && wallLeft == 0 && left_edge > 7.0) ? true : false;
 
   ROS_INFO("wallMiddleLeft : %d", wallMiddleLeft);
   ROS_INFO("wallLeft : %d", wallLeft);
+  ROS_INFO("doorLeft : %d", doorLeft);
+  // ROS_INFO("stranded : %d", stranded);
   ROS_INFO("wallMiddleLeft : %f", closest_edge);
   ROS_INFO("wallLeft : %f", left_edge);
+  ROS_INFO_STREAM("");
 
   wallMap.insert(std::pair<char, bool>('f', wallMiddleLeft));
   wallMap.insert(std::pair<char, bool>('l', wallLeft));
+  wallMap.insert(std::pair<char, bool>('d', doorLeft));
 
   return wallMap;
 }
 
 void goBack(geometry_msgs::Twist msg, ros::Rate loop_rate, ros::Publisher twist_pub) {
-  double goal_x = 1.0;
+  double goal_x = 0.5;
   double current_pos_x = 0.0;
   double linear_speed = 0.2;
   double angular_correction = 0.00604; // changed from 0.007551
